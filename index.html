@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .stats {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .game-board {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+
+        .row {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .tile {
+            width: 62px;
+            height: 62px;
+            border: 2px solid #d3d6da;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: bold;
+            text-transform: uppercase;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+
+        .tile.filled {
+            border-color: #878a8c;
+            animation: pop 0.1s ease;
+        }
+
+        .tile.correct {
+            background-color: #6aaa64;
+            border-color: #6aaa64;
+            color: white;
+            animation: flip 0.5s ease;
+        }
+
+        .tile.present {
+            background-color: #c9b458;
+            border-color: #c9b458;
+            color: white;
+            animation: flip 0.5s ease;
+        }
+
+        .tile.absent {
+            background-color: #787c7e;
+            border-color: #787c7e;
+            color: white;
+            animation: flip 0.5s ease;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes flip {
+            0% { transform: rotateX(0); }
+            50% { transform: rotateX(90deg); }
+            100% { transform: rotateX(0); }
+        }
+
+        .keyboard {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 20px;
+        }
+
+        .keyboard-row {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+        }
+
+        .key {
+            min-width: 43px;
+            height: 58px;
+            background-color: #d3d6da;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+            transition: all 0.1s ease;
+        }
+
+        .key:active {
+            transform: scale(0.95);
+        }
+
+        .key.wide {
+            min-width: 65px;
+            font-size: 12px;
+        }
+
+        .key.correct {
+            background-color: #6aaa64;
+            color: white;
+        }
+
+        .key.present {
+            background-color: #c9b458;
+            color: white;
+        }
+
+        .key.absent {
+            background-color: #787c7e;
+            color: white;
+        }
+
+        .message {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+
+        .message.show {
+            opacity: 1;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 WORDLE</h1>
+        
+        <div class="stats" id="stats">
+            <div class="loading">Loading...</div>
+        </div>
+
+        <div class="game-board" id="board"></div>
+
+        <div class="keyboard" id="keyboard"></div>
+    </div>
+
+    <div class="message" id="message"></div>
+
+    <script>
+        // Инициализация Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        // API URL - ваш Railway backend
+        const API_URL = 'https://web-production-07e9f.up.railway.app/api';
+
+        // Состояние игры
+        let gameState = {
+            attempts: [],
+            currentGuess: '',
+            daily_word: '',
+            letterStates: {}
+        };
+
+        const KEYBOARD_LAYOUT = [
+            ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+            ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+            ['ENTER', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫']
+        ];
+
+        // Получение user_id из Telegram
+        const userId = tg.initDataUnsafe?.user?.id || 'demo';
+
+        // Инициализация игры
+        async function initGame() {
+            try {
+                // Загрузка состояния игры с сервера
+                const response = await fetch(`${API_URL}/game/${userId}`);
+                const data = await response.json();
+                
+                gameState = data;
+                renderBoard();
+                renderKeyboard();
+                updateStats();
+            } catch (error) {
+                console.error('Error loading game:', error);
+                showMessage('Error loading game');
+            }
+        }
+
+        // Отрисовка игрового поля
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+
+            for (let i = 0; i < 6; i++) {
+                const row = document.createElement('div');
+                row.className = 'row';
+
+                for (let j = 0; j < 5; j++) {
+                    const tile = document.createElement('div');
+                    tile.className = 'tile';
+
+                    if (i < gameState.attempts.length) {
+                        const attempt = gameState.attempts[i];
+                        tile.textContent = attempt.word[j];
+                        tile.classList.add(attempt.result[j]);
+                    } else if (i === gameState.attempts.length && j < gameState.currentGuess.length) {
+                        tile.textContent = gameState.currentGuess[j];
+                        tile.classList.add('filled');
+                    }
+
+                    row.appendChild(tile);
+                }
+
+                board.appendChild(row);
+            }
+        }
+
+        // Отрисовка клавиатуры
+        function renderKeyboard() {
+            const keyboard = document.getElementById('keyboard');
+            keyboard.innerHTML = '';
+
+            KEYBOARD_LAYOUT.forEach(row => {
+                const keyboardRow = document.createElement('div');
+                keyboardRow.className = 'keyboard-row';
+
+                row.forEach(key => {
+                    const keyButton = document.createElement('button');
+                    keyButton.className = 'key';
+                    keyButton.textContent = key;
+
+                    if (key === 'ENTER' || key === '⌫') {
+                        keyButton.classList.add('wide');
+                    }
+
+                    // Применяем цвет из состояния букв
+                    if (gameState.letterStates[key]) {
+                        keyButton.classList.add(gameState.letterStates[key]);
+                    }
+
+                    keyButton.onclick = () => handleKeyPress(key);
+                    keyboardRow.appendChild(keyButton);
+                });
+
+                keyboard.appendChild(keyboardRow);
+            });
+        }
+
+        // Обработка нажатия клавиши
+        async function handleKeyPress(key) {
+            if (gameState.attempts.length >= 6) {
+                showMessage('Game over!');
+                return;
+            }
+
+            if (key === '⌫') {
+                gameState.currentGuess = gameState.currentGuess.slice(0, -1);
+                renderBoard();
+            } else if (key === 'ENTER') {
+                if (gameState.currentGuess.length !== 5) {
+                    showMessage('Word must be 5 letters');
+                    return;
+                }
+
+                await submitGuess();
+            } else {
+                if (gameState.currentGuess.length < 5) {
+                    gameState.currentGuess += key;
+                    renderBoard();
+                }
+            }
+        }
+
+        // Отправка попытки на сервер
+        async function submitGuess() {
+            try {
+                const response = await fetch(`${API_URL}/guess`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        guess: gameState.currentGuess
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.valid) {
+                    showMessage(data.message);
+                    return;
+                }
+
+                // Обновляем состояние
+                gameState.attempts = data.attempts;
+                gameState.letterStates = data.letterStates;
+                gameState.currentGuess = '';
+
+                renderBoard();
+                renderKeyboard();
+
+                // Проверка результата
+                if (data.won) {
+                    setTimeout(() => {
+                        showMessage(`🎉 You won in ${data.attempts.length} attempts!`);
+                        tg.showAlert(`Congratulations! You won in ${data.attempts.length} attempts!`);
+                    }, 1500);
+                } else if (data.gameOver) {
+                    setTimeout(() => {
+                        showMessage(`Game over! Word was: ${data.word}`);
+                        tg.showAlert(`Game over! The word was: ${data.word}`);
+                    }, 1500);
+                }
+
+            } catch (error) {
+                console.error('Error submitting guess:', error);
+                showMessage('Error submitting guess');
+            }
+        }
+
+        // Показать сообщение
+        function showMessage(text) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.classList.add('show');
+            setTimeout(() => {
+                message.classList.remove('show');
+            }, 2000);
+        }
+
+        // Обновить статистику
+        function updateStats() {
+            const stats = document.getElementById('stats');
+            stats.innerHTML = `
+                <div style="display: flex; justify-content: space-around;">
+                    <div>
+                        <div style="font-size: 24px; font-weight: bold;">${gameState.stats?.played || 0}</div>
+                        <div style="font-size: 12px;">Played</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 24px; font-weight: bold;">${gameState.stats?.won || 0}</div>
+                        <div style="font-size: 12px;">Won</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 24px; font-weight: bold;">${gameState.stats?.streak || 0}</div>
+                        <div style="font-size: 12px;">Streak</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 24px; font-weight: bold;">${gameState.attempts?.length || 0}/6</div>
+                        <div style="font-size: 12px;">Today</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Поддержка физической клавиатуры
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toUpperCase();
+            
+            if (key === 'ENTER') {
+                handleKeyPress('ENTER');
+            } else if (key === 'BACKSPACE') {
+                handleKeyPress('⌫');
+            } else if (key >= 'A' && key <= 'Z') {
+                handleKeyPress(key);
+            }
+        });
+
+        // Запуск игры
+        initGame();
+    </script>
+</body>
+</html>
