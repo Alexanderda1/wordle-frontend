@@ -5,190 +5,221 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wordle</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: var(--tg-theme-bg-color, #ffffff);
+        color: var(--tg-theme-text-color, #000000);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        overflow-x: hidden;
+    }
 
-        .container {
-            max-width: 500px;
-            width: 100%;
-            padding: 0 10px;
-        }
+    .container {
+        max-width: 500px;
+        width: 100%;
+        padding: 0 5px;
+    }
 
-        h1 {
-            text-align: center;
-            margin-bottom: 15px;
-            font-size: clamp(24px, 6vw, 32px);
-            font-weight: bold;
-        }
+    h1 {
+        text-align: center;
+        margin-bottom: 10px;
+        font-size: clamp(20px, 5vw, 28px);
+        font-weight: bold;
+    }
 
-        .stats {
-            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-            padding: 12px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            text-align: center;
-            font-size: clamp(11px, 2.5vw, 14px);
-        }
+    .stats {
+        background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        text-align: center;
+        font-size: clamp(10px, 2.5vw, 12px);
+    }
 
-        .game-board {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            margin-bottom: 15px;
-            padding: 0 5px;
-        }
+    .stats > div {
+        display: flex;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
 
-        .row {
-            display: flex;
-            gap: 5px;
-            justify-content: center;
-        }
+    .stats > div > div {
+        flex: 1;
+        min-width: 60px;
+    }
 
-        .tile {
-            width: clamp(50px, 12vw, 62px);
-            height: clamp(50px, 12vw, 62px);
-            border: 2px solid #d3d6da;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: clamp(24px, 6vw, 32px);
-            font-weight: bold;
-            text-transform: uppercase;
-            border-radius: 4px;
-            transition: all 0.3s ease;
-        }
+    .game-board {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 10px;
+        padding: 0 2px;
+    }
 
-        .tile.filled {
-            border-color: #878a8c;
-            animation: pop 0.1s ease;
-        }
+    .row {
+        display: flex;
+        gap: 4px;
+        justify-content: center;
+    }
 
-        .tile.correct {
-            background-color: #6aaa64;
-            border-color: #6aaa64;
-            color: white;
-            animation: flip 0.5s ease;
-        }
+    .tile {
+        width: clamp(45px, 11vw, 58px);
+        height: clamp(45px, 11vw, 58px);
+        border: 2px solid #d3d6da;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: clamp(20px, 5vw, 28px);
+        font-weight: bold;
+        text-transform: uppercase;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+    }
 
-        .tile.present {
-            background-color: #c9b458;
-            border-color: #c9b458;
-            color: white;
-            animation: flip 0.5s ease;
-        }
+    .tile.filled {
+        border-color: #878a8c;
+        animation: pop 0.1s ease;
+    }
 
-        .tile.absent {
-            background-color: #787c7e;
-            border-color: #787c7e;
-            color: white;
-            animation: flip 0.5s ease;
-        }
+    .tile.correct {
+        background-color: #6aaa64;
+        border-color: #6aaa64;
+        color: white;
+        animation: flip 0.5s ease;
+    }
 
-        @keyframes pop {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
-        }
+    .tile.present {
+        background-color: #c9b458;
+        border-color: #c9b458;
+        color: white;
+        animation: flip 0.5s ease;
+    }
 
-        @keyframes flip {
-            0% { transform: rotateX(0); }
-            50% { transform: rotateX(90deg); }
-            100% { transform: rotateX(0); }
-        }
+    .tile.absent {
+        background-color: #787c7e;
+        border-color: #787c7e;
+        color: white;
+        animation: flip 0.5s ease;
+    }
 
-        .keyboard {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-top: 20px;
-        }
+    @keyframes pop {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
 
-        .keyboard-row {
-            display: flex;
-            gap: 6px;
-            justify-content: center;
-        }
+    @keyframes flip {
+        0% { transform: rotateX(0); }
+        50% { transform: rotateX(90deg); }
+        100% { transform: rotateX(0); }
+    }
 
-        .key {
-            min-width: 43px;
-            height: 58px;
-            background-color: #d3d6da;
-            border: none;
-            border-radius: 4px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-transform: uppercase;
-            transition: all 0.1s ease;
-        }
+    .keyboard {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 10px;
+        padding: 0 2px;
+        width: 100%;
+        max-width: 500px;
+    }
 
-        .key:active {
-            transform: scale(0.95);
-        }
+    .keyboard-row {
+        display: flex;
+        gap: clamp(2px, 0.8vw, 4px);
+        justify-content: center;
+        width: 100%;
+    }
 
-        .key.wide {
-            min-width: 65px;
-            font-size: 12px;
-        }
+    .key {
+        min-width: clamp(20px, 6vw, 38px);
+        height: clamp(42px, 10vw, 52px);
+        background-color: #d3d6da;
+        border: none;
+        border-radius: 3px;
+        font-size: clamp(10px, 2.5vw, 13px);
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-transform: uppercase;
+        transition: all 0.1s ease;
+        flex: 1;
+        max-width: clamp(26px, 7vw, 45px);
+        padding: 0 2px;
+    }
 
-        .key.correct {
-            background-color: #6aaa64;
-            color: white;
-        }
+    .key:active {
+        transform: scale(0.95);
+        opacity: 0.8;
+    }
 
-        .key.present {
-            background-color: #c9b458;
-            color: white;
-        }
+    .key.wide {
+        flex: 1.5;
+        max-width: clamp(45px, 11vw, 60px);
+        font-size: clamp(9px, 2.2vw, 11px);
+    }
 
-        .key.absent {
-            background-color: #787c7e;
-            color: white;
-        }
+    .key.correct {
+        background-color: #6aaa64;
+        color: white;
+    }
 
-        .message {
-            position: fixed;
-            top: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #333;
-            color: white;
-            padding: 15px 25px;
-            border-radius: 8px;
-            font-weight: bold;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            z-index: 1000;
-        }
+    .key.present {
+        background-color: #c9b458;
+        color: white;
+    }
 
-        .message.show {
-            opacity: 1;
-        }
+    .key.absent {
+        background-color: #787c7e;
+        color: white;
+    }
 
-        .loading {
-            text-align: center;
-            padding: 20px;
-            font-size: 18px;
-        }
-    </style>
+    .message {
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #333;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: clamp(12px, 3vw, 14px);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        z-index: 1000;
+        max-width: 90%;
+        text-align: center;
+    }
+
+    .message.show {
+        opacity: 1;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 15px;
+        font-size: clamp(14px, 3.5vw, 16px);
+    }
+
+    /* Убираем горизонтальный скролл */
+    html, body {
+        overflow-x: hidden;
+        width: 100%;
+    }
+</style>
 </head>
 <body>
     <div class="container">
