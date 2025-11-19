@@ -309,11 +309,13 @@
         const MODES = {
             normal: {
                 label: 'Normal',
-                description: 'Standard Wordle mix. Great for daily warm-up.'
+                description: 'Standard Wordle mix. Great for daily warm-up.',
+                wordLength: 5
             },
             hard: {
                 label: 'Hard Mode',
-                description: 'Words pulled exclusively from hard.txt.'
+                description: 'If you want hardcore challenge - 7 letter words!',
+                wordLength: 7
             }
         };
 
@@ -326,7 +328,8 @@
             lastAnimatedAttemptIndex: null,
             stats: { played: 0, won: 0, streak: 0 },
             gameOver: false,
-            mode: 'normal'
+            mode: 'normal',
+            wordLength: 5
         };
         let currentMode = 'normal';
         let modeSelected = false;
@@ -394,6 +397,7 @@
                 gameState.stats = gameState.stats || { played: 0, won: 0, streak: 0 };
                 gameState.mode = data.mode || currentMode;
                 gameState.gameOver = data.gameOver || false;
+                gameState.wordLength = data.wordLength || MODES[currentMode]?.wordLength || 5;
                 currentMode = gameState.mode;
                 gameState.lastAnimatedAttemptIndex = null;
                 updateModeUI();
@@ -425,19 +429,22 @@
         function renderBoard() {
             const board = document.getElementById('board');
             board.innerHTML = '';
+            const wordLength = gameState.wordLength || MODES[currentMode]?.wordLength || 5;
 
             for (let i = 0; i < 6; i++) {
                 const row = document.createElement('div');
                 row.className = 'row';
 
-                for (let j = 0; j < 5; j++) {
+                for (let j = 0; j < wordLength; j++) {
                     const tile = document.createElement('div');
                     tile.className = 'tile';
 
                     if (i < gameState.attempts.length) {
                         const attempt = gameState.attempts[i];
-                        tile.textContent = attempt.word[j];
-                        tile.classList.add(attempt.result[j]);
+                        if (attempt.word && attempt.word[j]) {
+                            tile.textContent = attempt.word[j];
+                            tile.classList.add(attempt.result[j]);
+                        }
                         if (gameState.lastAnimatedAttemptIndex === i) {
                             tile.classList.add('flip-animate');
                         }
@@ -508,14 +515,16 @@
                 gameState.currentGuess = gameState.currentGuess.slice(0, -1);
                 renderBoard();
             } else if (key === 'ENTER') {
-                if (gameState.currentGuess.length !== 5) {
-                    showMessage('Word must be 5 letters');
+                const wordLength = gameState.wordLength || MODES[currentMode]?.wordLength || 5;
+                if (gameState.currentGuess.length !== wordLength) {
+                    showMessage(`Word must be ${wordLength} letters`);
                     return;
                 }
 
                 await submitGuess();
             } else {
-                if (gameState.currentGuess.length < 5) {
+                const wordLength = gameState.wordLength || MODES[currentMode]?.wordLength || 5;
+                if (gameState.currentGuess.length < wordLength) {
                     gameState.currentGuess += key;
                     renderBoard();
                 }
@@ -548,6 +557,7 @@
                 gameState.attempts = data.attempts;
                 gameState.letterStates = data.letterStates;
                 gameState.currentGuess = '';
+                gameState.wordLength = data.wordLength || gameState.wordLength || MODES[currentMode]?.wordLength || 5;
                 gameState.lastAnimatedAttemptIndex = data.attempts.length - 1;
                 gameState.stats = data.stats || gameState.stats;
                 gameState.gameOver = data.gameOver;
@@ -650,7 +660,8 @@
                 lastAnimatedAttemptIndex: null,
                 stats: { played: 0, won: 0, streak: 0 },
                 gameOver: false,
-                mode: currentMode
+                mode: currentMode,
+                wordLength: MODES[currentMode]?.wordLength || 5
             };
             renderBoard();
             renderKeyboard();
