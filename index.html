@@ -75,27 +75,27 @@
 
         .tile.filled {
             border-color: #878a8c;
-            animation: pop 0.1s ease;
         }
 
         .tile.correct {
             background-color: #6aaa64;
             border-color: #6aaa64;
             color: white;
-            animation: flip 0.5s ease;
         }
 
         .tile.present {
             background-color: #c9b458;
             border-color: #c9b458;
             color: white;
-            animation: flip 0.5s ease;
         }
 
         .tile.absent {
             background-color: #787c7e;
             border-color: #787c7e;
             color: white;
+        }
+
+        .tile.flip-animate {
             animation: flip 0.5s ease;
         }
 
@@ -226,7 +226,8 @@
             attempts: [],
             currentGuess: '',
             daily_word: '',
-            letterStates: {}
+            letterStates: {},
+            lastAnimatedAttemptIndex: null
         };
 
         const KEYBOARD_LAYOUT = [
@@ -246,6 +247,7 @@
                 const data = await response.json();
 
                 gameState = data;
+                gameState.lastAnimatedAttemptIndex = null;
 
                 // Проверяем не закончилась ли вчерашняя игра
                 // Если gameOver и attempts есть - показываем результат, но можно начать новую
@@ -286,6 +288,9 @@
                         const attempt = gameState.attempts[i];
                         tile.textContent = attempt.word[j];
                         tile.classList.add(attempt.result[j]);
+                        if (gameState.lastAnimatedAttemptIndex === i) {
+                            tile.classList.add('flip-animate');
+                        }
                     } else if (i === gameState.attempts.length && j < gameState.currentGuess.length) {
                         tile.textContent = gameState.currentGuess[j];
                         tile.classList.add('filled');
@@ -295,6 +300,10 @@
                 }
 
                 board.appendChild(row);
+            }
+
+            if (gameState.lastAnimatedAttemptIndex !== null) {
+                gameState.lastAnimatedAttemptIndex = null;
             }
         }
 
@@ -379,6 +388,7 @@
                 gameState.attempts = data.attempts;
                 gameState.letterStates = data.letterStates;
                 gameState.currentGuess = '';
+                gameState.lastAnimatedAttemptIndex = data.attempts.length - 1;
 
                 renderBoard();
                 renderKeyboard();
