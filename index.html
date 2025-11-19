@@ -239,6 +239,35 @@
         // Получение user_id из Telegram
         const userId = tg.initDataUnsafe?.user?.id || 'demo';
 
+        let keyboardListenerAttached = false;
+
+        function attachPhysicalKeyboard() {
+            if (keyboardListenerAttached) return;
+            keyboardListenerAttached = true;
+
+            window.addEventListener('keydown', (e) => {
+                // Игнорируем ввод, если пользователь печатает в элементах формы
+                const target = e.target;
+                if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                    return;
+                }
+
+                const key = e.key.length === 1 ? e.key.toUpperCase() : e.key.toUpperCase();
+
+                if ((key >= 'A' && key <= 'Z') || key === 'ENTER' || key === 'BACKSPACE') {
+                    e.preventDefault();
+                }
+
+                if (key === 'ENTER') {
+                    handleKeyPress('ENTER');
+                } else if (key === 'BACKSPACE') {
+                    handleKeyPress('⌫');
+                } else if (key.length === 1 && key >= 'A' && key <= 'Z') {
+                    handleKeyPress(key);
+                }
+            });
+        }
+
         // Инициализация игры
         async function initGame() {
             try {
@@ -265,6 +294,7 @@
                 renderBoard();
                 renderKeyboard();
                 updateStats();
+                attachPhysicalKeyboard();
             } catch (error) {
                 console.error('Error loading game:', error);
                 showMessage('Error loading game');
@@ -446,36 +476,6 @@
                 </div>
             `;
         }
-
-        // Поддержка физической клавиатуры
-        document.addEventListener('keydown', (e) => {
-            // Предотвращаем дефолтное поведение для игровых клавиш
-            if ((e.key >= 'a' && e.key <= 'z') ||
-                (e.key >= 'A' && e.key <= 'Z') ||
-                e.key === 'Enter' ||
-                e.key === 'Backspace') {
-                e.preventDefault();
-            }
-
-            const key = e.key.toUpperCase();
-
-            if (key === 'ENTER') {
-                handleKeyPress('ENTER');
-            } else if (key === 'BACKSPACE') {
-                handleKeyPress('⌫');
-            } else if (key >= 'A' && key <= 'Z' && key.length === 1) {
-                handleKeyPress(key);
-            }
-        });
-
-        // Автофокус на body чтобы клавиатура всегда работала
-        document.body.tabIndex = 0;
-        document.body.focus();
-
-        // Возвращаем фокус при клике на любое место
-        document.addEventListener('click', () => {
-            document.body.focus();
-        });
 
         // Запуск игры
         initGame();
