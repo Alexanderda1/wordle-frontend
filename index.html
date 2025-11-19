@@ -45,6 +45,67 @@
             font-size: clamp(11px, 2.5vw, 14px);
         }
 
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .mode-option {
+            flex: 1;
+            min-width: 140px;
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-radius: 10px;
+            padding: 12px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .mode-option:hover {
+            border-color: #6aaa64;
+        }
+
+        .mode-option.active {
+            border-color: #6aaa64;
+            background: rgba(106, 170, 100, 0.15);
+        }
+
+        .mode-option .mode-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .mode-option .mode-text {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #5f6368);
+        }
+
+        .mode-info {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .mode-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            color: var(--tg-theme-text-color, #000);
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .mode-description {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #5f6368);
+        }
+
         .game-board {
             display: flex;
             flex-direction: column;
@@ -119,6 +180,13 @@
             padding: 0 5px;
             width: 100%;
             max-width: 500px;
+        }
+
+        .keyboard-placeholder {
+            text-align: center;
+            padding: 10px;
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #5f6368);
         }
 
         .keyboard-row {
@@ -205,6 +273,24 @@
             <div class="loading">Loading...</div>
         </div>
 
+        <div class="mode-selector" id="mode-selector">
+            <div class="mode-option" data-mode="normal">
+                <div class="mode-title">Normal</div>
+                <div class="mode-text">Classic daily challenge</div>
+            </div>
+            <div class="mode-option" data-mode="hard">
+                <div class="mode-title">Hard Mode</div>
+                <div class="mode-text">Strict list from hard.txt</div>
+            </div>
+        </div>
+
+        <div class="mode-info">
+            <div class="mode-pill" id="mode-pill">Select a mode to start</div>
+            <div class="mode-description" id="mode-description">
+                Pick a mode above to load today's puzzle.
+            </div>
+        </div>
+
         <div class="game-board" id="board"></div>
 
         <div class="keyboard" id="keyboard"></div>
@@ -220,6 +306,16 @@
 
         // API URL - ваш Railway backend
         const API_URL = 'https://web-production-07e9f.up.railway.app/api';
+        const MODES = {
+            normal: {
+                label: 'Normal',
+                description: 'Standard Wordle mix. Great for daily warm-up.'
+            },
+            hard: {
+                label: 'Hard Mode',
+                description: 'Words pulled exclusively from hard.txt.'
+            }
+        };
 
         // Состояние игры
         let gameState = {
@@ -227,8 +323,13 @@
             currentGuess: '',
             daily_word: '',
             letterStates: {},
-            lastAnimatedAttemptIndex: null
+            lastAnimatedAttemptIndex: null,
+            stats: { played: 0, won: 0, streak: 0 },
+            gameOver: false,
+            mode: 'normal'
         };
+        let currentMode = 'normal';
+        let modeSelected = false;
 
         const KEYBOARD_LAYOUT = [
             ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
@@ -270,13 +371,32 @@
 
         // Инициализация игры
         async function initGame() {
+            if (!modeSelected) {
+                return;
+            }
+
             try {
+                setStatsLoading();
+                const response = await fetch(`${API_URL}/game/${userId}?mode=${currentMode}`);
+
+                if (!response.ok) {
+                    throw new Error('Failed to load game');
+                }
+
                 // Загрузка состояния игры с сервера
-                const response = await fetch(`${API_URL}/game/${userId}`);
                 const data = await response.json();
 
-                gameState = data;
+                gameState = {
+                    ...data,
+                    lastAnimatedAttemptIndex: null,
+                    currentGuess: '',
+                };
+                gameState.stats = gameState.stats || { played: 0, won: 0, streak: 0 };
+                gameState.mode = data.mode || currentMode;
+                gameState.gameOver = data.gameOver || false;
+                currentMode = gameState.mode;
                 gameState.lastAnimatedAttemptIndex = null;
+                updateModeUI();
 
                 // Проверяем не закончилась ли вчерашняя игра
                 // Если gameOver и attempts есть - показываем результат, но можно начать новую
@@ -342,6 +462,11 @@
             const keyboard = document.getElementById('keyboard');
             keyboard.innerHTML = '';
 
+            if (!modeSelected) {
+                keyboard.innerHTML = '<div class="keyboard-placeholder">Select a mode to enable the keyboard.</div>';
+                return;
+            }
+
             KEYBOARD_LAYOUT.forEach(row => {
                 const keyboardRow = document.createElement('div');
                 keyboardRow.className = 'keyboard-row';
@@ -370,6 +495,10 @@
 
         // Обработка нажатия клавиши
         async function handleKeyPress(key) {
+            if (!modeSelected) {
+                showMessage('Select a mode to start playing');
+                return;
+            }
             if (gameState.attempts.length >= 6) {
                 showMessage('Game over!');
                 return;
@@ -403,7 +532,8 @@
                     },
                     body: JSON.stringify({
                         user_id: userId,
-                        guess: gameState.currentGuess
+                        guess: gameState.currentGuess,
+                        mode: currentMode
                     })
                 });
 
@@ -419,9 +549,12 @@
                 gameState.letterStates = data.letterStates;
                 gameState.currentGuess = '';
                 gameState.lastAnimatedAttemptIndex = data.attempts.length - 1;
+                gameState.stats = data.stats || gameState.stats;
+                gameState.gameOver = data.gameOver;
 
                 renderBoard();
                 renderKeyboard();
+                updateStats();
 
                 // Проверка результата
                 if (data.won) {
@@ -455,6 +588,10 @@
         // Обновить статистику
         function updateStats() {
             const stats = document.getElementById('stats');
+            if (!modeSelected) {
+                stats.innerHTML = '<div class="loading">Select a mode to start</div>';
+                return;
+            }
             stats.innerHTML = `
                 <div style="display: flex; justify-content: space-around;">
                     <div>
@@ -474,11 +611,84 @@
                         <div style="font-size: 12px;">Today</div>
                     </div>
                 </div>
+                <div style="margin-top: 10px; font-size: 11px; color: var(--tg-theme-hint-color, #5f6368);">
+                    Mode: ${MODES[currentMode]?.label || currentMode}
+                </div>
             `;
         }
 
+        function setStatsLoading() {
+            const stats = document.getElementById('stats');
+            stats.innerHTML = '<div class="loading">Loading...</div>';
+        }
+
+        function updateModeUI() {
+            const options = document.querySelectorAll('.mode-option');
+            options.forEach(option => {
+                const optionMode = option.dataset.mode;
+                option.classList.toggle('active', modeSelected && optionMode === currentMode);
+            });
+
+            const pill = document.getElementById('mode-pill');
+            const description = document.getElementById('mode-description');
+
+            if (modeSelected) {
+                pill.textContent = `${MODES[currentMode]?.label || currentMode} mode`;
+                description.textContent = MODES[currentMode]?.description || '';
+            } else {
+                pill.textContent = 'Select a mode to start';
+                description.textContent = "Pick a mode above to load today's puzzle.";
+            }
+        }
+
+        function resetLocalGameState() {
+            gameState = {
+                attempts: [],
+                currentGuess: '',
+                daily_word: '',
+                letterStates: {},
+                lastAnimatedAttemptIndex: null,
+                stats: { played: 0, won: 0, streak: 0 },
+                gameOver: false,
+                mode: currentMode
+            };
+            renderBoard();
+            renderKeyboard();
+            updateStats();
+        }
+
+        function initModeSelector() {
+            const options = document.querySelectorAll('.mode-option');
+            options.forEach(option => {
+                option.addEventListener('click', () => {
+                    const selectedMode = option.dataset.mode;
+                    if (modeSelected && selectedMode === currentMode) {
+                        return;
+                    }
+
+                    if (modeSelected && gameState.attempts.length > 0 && !gameState.gameOver) {
+                        const confirmSwitch = window.confirm('Switching modes will reset today\'s progress. Continue?');
+                        if (!confirmSwitch) {
+                            return;
+                        }
+                    }
+
+                    currentMode = selectedMode;
+                    modeSelected = true;
+                    gameState.currentGuess = '';
+                    updateModeUI();
+                    resetLocalGameState();
+                    initGame();
+                });
+            });
+        }
+
         // Запуск игры
-        initGame();
+        updateModeUI();
+        renderBoard();
+        renderKeyboard();
+        updateStats();
+        initModeSelector();
     </script>
 </body>
 </html>
