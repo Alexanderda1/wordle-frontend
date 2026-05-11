@@ -911,20 +911,24 @@
                     const cell = gridCells[r][c];
                     const key = `${r},${c}`;
 
+                    const isSelected = gridSelected && gridSelected.row === r && gridSelected.col === c;
+                    const isInPath = key in pathMap;
+
                     if (cell) {
                         tile.textContent = cell.letter;
                         tile.classList.add(cell.state);
-                    } else if (gridSelected && gridSelected.row === r && gridSelected.col === c) {
-                        tile.classList.add('grid-selected');
-                        tile.addEventListener('click', () => handleGridCellTap(r, c));
-                    } else if (key in pathMap) {
+                    } else if (isInPath) {
                         const idx = pathMap[key];
                         if (idx < gridInput.length) {
                             tile.textContent = gridInput[idx];
-                            tile.classList.add('grid-path-filled');
+                            tile.classList.add(isSelected ? 'grid-selected' : 'grid-path-filled');
                         } else {
-                            tile.classList.add('grid-path');
+                            tile.classList.add(isSelected ? 'grid-selected' : 'grid-path');
                         }
+                        tile.addEventListener('click', () => handleGridCellTap(r, c));
+                    } else if (isSelected) {
+                        tile.classList.add('grid-selected');
+                        tile.addEventListener('click', () => handleGridCellTap(r, c));
                     } else {
                         tile.classList.add('grid-clickable');
                         tile.addEventListener('click', () => handleGridCellTap(r, c));
