@@ -1070,10 +1070,9 @@
             const emoji = generateEmojiGrid(gameState.attempts);
             const won = gameState.attempts.length > 0 && gameState.attempts[gameState.attempts.length - 1]?.correct;
             const attemptsText = won ? `${gameState.attempts.length}/6` : 'X/6';
-            const modeLabel = currentMode === 'hard' ? 'Hard Mode' : 'Normal';
-            const shareUrl = `https://wordle-frontend-gray.vercel.app?view=${userId}&mode=${currentMode}`;
-            const text = `WORDGRID ${modeLabel} ${attemptsText}\n\n${emoji}\n\n${shareUrl}`;
-            tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`WORDGRID ${modeLabel} ${attemptsText}\n\n${emoji}`)}`);
+            const modeLabel = currentMode === 'hard' ? 'Hard Mode' : currentMode === 'grid' ? 'Grid Mode' : 'Normal';
+            const text = `WORDGRID ${modeLabel} ${attemptsText}\n\n${emoji}\n\nСмотри мой результат! Поиграть можешь здесь: @WordGridTumgubot`;
+            tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent('https://t.me/WordGridTumgubot')}&text=${encodeURIComponent(text)}`);
         }
 
         function showShareButton() {
