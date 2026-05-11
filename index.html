@@ -294,6 +294,71 @@
             font-weight: bold;
             font-size: 14px;
         }
+
+        .tile.grid-clickable {
+            cursor: pointer;
+            border-color: #b8bbbe;
+        }
+
+        .tile.grid-clickable:hover {
+            border-color: #888;
+        }
+
+        .tile.grid-selected {
+            border-color: #4a90d9;
+            border-width: 3px;
+        }
+
+        .tile.grid-path {
+            border-color: #c9b458;
+            border-width: 3px;
+            background: rgba(201, 180, 88, 0.1);
+        }
+
+        .tile.grid-path-filled {
+            border-color: #c9b458;
+            border-width: 3px;
+            background: rgba(201, 180, 88, 0.25);
+        }
+
+        .direction-buttons {
+            display: none;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin: 10px 0;
+            max-width: 320px;
+        }
+
+        .dir-btn {
+            width: 52px;
+            height: 52px;
+            border: 2px solid #d3d6da;
+            border-radius: 8px;
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            font-size: 22px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .dir-btn:active { transform: scale(0.93); }
+
+        .dir-btn.active {
+            border-color: #6aaa64;
+            background: rgba(106, 170, 100, 0.2);
+        }
+
+        .dir-btn:disabled {
+            opacity: 0.25;
+            cursor: not-allowed;
+        }
+
+        .grid-hint {
+            text-align: center;
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #5f6368);
+            margin-bottom: 6px;
+        }
     </style>
 </head>
 <body>
@@ -315,6 +380,10 @@
                 <div class="mode-title">Hard Mode</div>
                 <div class="mode-text">Hard mode with 7-letter words</div>
             </div>
+            <div class="mode-option" data-mode="grid">
+                <div class="mode-title">Grid Mode</div>
+                <div class="mode-text">Choose direction each turn</div>
+            </div>
         </div>
 
         <div class="mode-info">
@@ -325,6 +394,9 @@
         </div>
 
         <div class="game-board" id="board"></div>
+
+        <div class="grid-hint" id="grid-hint"></div>
+        <div class="direction-buttons" id="direction-buttons"></div>
 
         <button class="share-btn" id="share-btn" onclick="shareResult()">📤 Share my result</button>
 
@@ -351,6 +423,11 @@
                 label: 'Hard Mode',
                 description: 'If you want hardcore challenge - 7 letter words!',
                 wordLength: 7
+            },
+            grid: {
+                label: 'Grid Mode',
+                description: 'Tap a cell, choose direction, guess the word!',
+                wordLength: 5
             }
         };
 
@@ -443,6 +520,15 @@
                 gameState.lastAnimatedAttemptIndex = null;
                 updateModeUI();
 
+                if (currentMode === 'grid') {
+                    restoreGridFromAttempts(data.attempts || []);
+                    document.getElementById('direction-buttons').style.display = 'none';
+                    document.getElementById('grid-hint').textContent = '';
+                } else {
+                    document.getElementById('direction-buttons').style.display = 'none';
+                    document.getElementById('grid-hint').textContent = '';
+                }
+
                 // Проверяем не закончилась ли вчерашняя игра
                 // Если gameOver и attempts есть - показываем результат, но можно начать новую
                 if (data.gameOver && data.attempts && data.attempts.length > 0) {
@@ -465,6 +551,10 @@
 
         // Отрисовка игрового поля
         function renderBoard() {
+            if (currentMode === 'grid') {
+                renderGridBoard();
+                return;
+            }
             const board = document.getElementById('board');
             board.innerHTML = '';
             const wordLength = gameState.wordLength || MODES[currentMode]?.wordLength || 5;
@@ -542,6 +632,10 @@
         async function handleKeyPress(key) {
             if (!modeSelected) {
                 showMessage('Select a mode to start playing');
+                return;
+            }
+            if (currentMode === 'grid') {
+                handleGridKeyPress(key);
                 return;
             }
             if (gameState.attempts.length >= 6) {
@@ -733,6 +827,235 @@
                 });
             });
         }
+
+        // ==================== GRID MODE ====================
+
+        const GRID_ROWS = 6;
+        const GRID_COLS = 5;
+        const GRID_WORD_LEN = 5;
+
+        const DIRECTIONS = [
+            { dr: 0,  dc:  1, label: '→' },
+            { dr:  1, dc:  0, label: '↓' },
+            { dr:  0, dc: -1, label: '←' },
+            { dr: -1, dc:  0, label: '↑' },
+            { dr:  1, dc:  1, label: '↘' },
+            { dr:  1, dc: -1, label: '↙' },
+            { dr: -1, dc:  1, label: '↗' },
+            { dr: -1, dc: -1, label: '↖' },
+        ];
+
+        let gridCells = [];    // [row][col] = null | { letter, state }
+        let gridSelected = null;   // { row, col }
+        let gridDirection = null;  // элемент из DIRECTIONS
+        let gridInput = '';
+
+        function initGridCells() {
+            gridCells = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(null));
+            gridSelected = null;
+            gridDirection = null;
+            gridInput = '';
+        }
+
+        function getGridPath(row, col, dir) {
+            const path = [];
+            for (let i = 0; i < GRID_WORD_LEN; i++) {
+                const r = row + dir.dr * i;
+                const c = col + dir.dc * i;
+                if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) return null;
+                if (gridCells[r][c] !== null) return null;
+                path.push({ row: r, col: c });
+            }
+            return path;
+        }
+
+        function restoreGridFromAttempts(attempts) {
+            initGridCells();
+            for (const attempt of attempts) {
+                if (!attempt.start_cell || !attempt.direction) continue;
+                const { row, col } = attempt.start_cell;
+                const dir = attempt.direction;
+                for (let i = 0; i < attempt.word.length; i++) {
+                    const r = row + dir.dr * i;
+                    const c = col + dir.dc * i;
+                    if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS) {
+                        gridCells[r][c] = { letter: attempt.word[i], state: attempt.result[i] };
+                    }
+                }
+            }
+        }
+
+        function renderGridBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+
+            let currentPath = [];
+            if (gridSelected && gridDirection) {
+                const path = getGridPath(gridSelected.row, gridSelected.col, gridDirection);
+                if (path) currentPath = path;
+            }
+            const pathMap = {};
+            currentPath.forEach((p, i) => { pathMap[`${p.row},${p.col}`] = i; });
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'row';
+
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const tile = document.createElement('div');
+                    tile.className = 'tile';
+                    const cell = gridCells[r][c];
+                    const key = `${r},${c}`;
+
+                    if (cell) {
+                        tile.textContent = cell.letter;
+                        tile.classList.add(cell.state);
+                    } else if (gridSelected && gridSelected.row === r && gridSelected.col === c) {
+                        tile.classList.add('grid-selected');
+                        tile.addEventListener('click', () => handleGridCellTap(r, c));
+                    } else if (key in pathMap) {
+                        const idx = pathMap[key];
+                        if (idx < gridInput.length) {
+                            tile.textContent = gridInput[idx];
+                            tile.classList.add('grid-path-filled');
+                        } else {
+                            tile.classList.add('grid-path');
+                        }
+                    } else {
+                        tile.classList.add('grid-clickable');
+                        tile.addEventListener('click', () => handleGridCellTap(r, c));
+                    }
+
+                    rowEl.appendChild(tile);
+                }
+                board.appendChild(rowEl);
+            }
+        }
+
+        function handleGridCellTap(row, col) {
+            if (gameState.gameOver) return;
+            gridSelected = { row, col };
+            gridDirection = null;
+            gridInput = '';
+            document.getElementById('grid-hint').textContent = 'Choose direction:';
+            renderGridBoard();
+            renderDirectionButtons();
+        }
+
+        function renderDirectionButtons() {
+            const container = document.getElementById('direction-buttons');
+            if (!gridSelected) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'flex';
+            container.innerHTML = '';
+
+            DIRECTIONS.forEach(dir => {
+                const path = getGridPath(gridSelected.row, gridSelected.col, dir);
+                const btn = document.createElement('button');
+                btn.className = 'dir-btn';
+                btn.textContent = dir.label;
+                btn.disabled = !path;
+                if (gridDirection && gridDirection.dr === dir.dr && gridDirection.dc === dir.dc) {
+                    btn.classList.add('active');
+                }
+                btn.addEventListener('click', () => {
+                    if (!path) return;
+                    gridDirection = dir;
+                    gridInput = '';
+                    document.getElementById('grid-hint').textContent = `Direction ${dir.label} — type your word:`;
+                    renderGridBoard();
+                    renderDirectionButtons();
+                });
+                container.appendChild(btn);
+            });
+        }
+
+        function handleGridKeyPress(key) {
+            if (gameState.gameOver) { showMessage('Game over!'); return; }
+            if (!gridSelected) { showMessage('Tap a cell to start'); return; }
+            if (!gridDirection) { showMessage('Choose a direction'); return; }
+
+            if (key === '⌫') {
+                gridInput = gridInput.slice(0, -1);
+                renderGridBoard();
+            } else if (key === 'ENTER') {
+                if (gridInput.length !== GRID_WORD_LEN) {
+                    showMessage(`Enter ${GRID_WORD_LEN} letters`);
+                    return;
+                }
+                submitGridGuess();
+            } else {
+                if (gridInput.length < GRID_WORD_LEN) {
+                    gridInput += key;
+                    renderGridBoard();
+                }
+            }
+        }
+
+        async function submitGridGuess() {
+            try {
+                const response = await fetch(`${API_URL}/guess`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        guess: gridInput,
+                        mode: 'grid',
+                        start_cell: gridSelected,
+                        direction: { dr: gridDirection.dr, dc: gridDirection.dc }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.valid) {
+                    showMessage(data.message);
+                    return;
+                }
+
+                const lastAttempt = data.attempts[data.attempts.length - 1];
+                const path = getGridPath(gridSelected.row, gridSelected.col, gridDirection);
+                path.forEach((cell, i) => {
+                    gridCells[cell.row][cell.col] = { letter: gridInput[i], state: lastAttempt.result[i] };
+                });
+
+                gameState.attempts = data.attempts;
+                gameState.letterStates = data.letterStates;
+                gameState.stats = data.stats || gameState.stats;
+                gameState.gameOver = data.gameOver;
+
+                gridSelected = null;
+                gridDirection = null;
+                gridInput = '';
+                document.getElementById('direction-buttons').style.display = 'none';
+                document.getElementById('grid-hint').textContent = gameState.gameOver ? '' : 'Tap a cell to continue';
+
+                renderGridBoard();
+                renderKeyboard();
+                updateStats();
+
+                if (data.won) {
+                    setTimeout(() => {
+                        showMessage(`🎉 Won in ${data.attempts.length} attempts!`);
+                        tg.showAlert(`You won in ${data.attempts.length} attempts!`);
+                        showShareButton();
+                    }, 800);
+                } else if (data.gameOver) {
+                    setTimeout(() => {
+                        showMessage(`Game over! Word: ${data.word}`);
+                        tg.showAlert(`Game over! The word was: ${data.word}`);
+                        showShareButton();
+                    }, 800);
+                }
+            } catch (e) {
+                console.error(e);
+                showMessage('Error submitting guess');
+            }
+        }
+
+        // ==================== /GRID MODE ====================
 
         function generateEmojiGrid(attempts) {
             const map = { correct: '🟩', present: '🟨', absent: '⬛' };
