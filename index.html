@@ -834,9 +834,10 @@
 
         // ==================== GRID MODE ====================
 
-        const GRID_ROWS = 6;
-        const GRID_COLS = 5;
-        const GRID_WORD_LEN = 5;
+        const GRID_ROWS = 7;
+        const GRID_COLS = 7;
+        const GRID_WORD_LEN = 7;
+        const GRID_MIN_LEN = 2;
 
         const DIRECTIONS = [
             { dr: 0,  dc:  1, label: '→' },
@@ -861,16 +862,26 @@
             gridInput = '';
         }
 
-        function getGridPath(row, col, dir) {
+        // length = длина слова (может быть 2-7), по умолчанию GRID_WORD_LEN
+        function getGridPath(row, col, dir, length) {
+            length = length || GRID_WORD_LEN;
             const path = [];
-            for (let i = 0; i < GRID_WORD_LEN; i++) {
+            for (let i = 0; i < length; i++) {
                 const r = row + dir.dr * i;
                 const c = col + dir.dc * i;
                 if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) return null;
-                if (gridCells[r][c] !== null) return null;
-                path.push({ row: r, col: c });
+                // пересечение разрешено — буква фиксирована
+                path.push({ row: r, col: c, fixed: gridCells[r][c] !== null ? gridCells[r][c].letter : null });
             }
             return path;
+        }
+
+        // Проверяем путь для кнопки направления: влезает хотя бы min длина (2) и нет полностью занятого пути
+        function isDirectionAvailable(row, col, dir) {
+            const path = getGridPath(row, col, dir, GRID_MIN_LEN);
+            if (!path) return false;
+            // хотя бы одна свободная клетка
+            return path.some(p => p.fixed === null);
         }
 
         function restoreGridFromAttempts(attempts) {
@@ -893,13 +904,21 @@
             const board = document.getElementById('board');
             board.innerHTML = '';
 
+            // Строим путь длиной gridInput.length или минимум 2
             let currentPath = [];
             if (gridSelected && gridDirection) {
-                const path = getGridPath(gridSelected.row, gridSelected.col, gridDirection);
+                const len = Math.max(gridInput.length + 1, GRID_MIN_LEN);
+                const capped = Math.min(len, GRID_WORD_LEN);
+                const path = getGridPath(gridSelected.row, gridSelected.col, gridDirection, capped);
                 if (path) currentPath = path;
             }
+            // pathMap: key → индекс позиции во введённом слове (пропуская фиксированные)
             const pathMap = {};
-            currentPath.forEach((p, i) => { pathMap[`${p.row},${p.col}`] = i; });
+            let inputIdx = 0;
+            currentPath.forEach((p, i) => {
+                pathMap[`${p.row},${p.col}`] = { pathIdx: i, inputIdx: p.fixed !== null ? null : inputIdx };
+                if (p.fixed === null) inputIdx++;
+            });
 
             for (let r = 0; r < GRID_ROWS; r++) {
                 const rowEl = document.createElement('div');
@@ -912,18 +931,27 @@
                     const key = `${r},${c}`;
 
                     const isSelected = gridSelected && gridSelected.row === r && gridSelected.col === c;
-                    const isInPath = key in pathMap;
+                    const pathEntry = pathMap[key];
+                    const isInPath = !!pathEntry;
 
-                    if (cell) {
+                    if (cell && !isInPath) {
+                        // заполненная клетка вне текущего пути
                         tile.textContent = cell.letter;
                         tile.classList.add(cell.state);
                     } else if (isInPath) {
-                        const idx = pathMap[key];
-                        if (idx < gridInput.length) {
-                            tile.textContent = gridInput[idx];
-                            tile.classList.add(isSelected ? 'grid-selected' : 'grid-path-filled');
+                        if (cell) {
+                            // фиксированная клетка на пути
+                            tile.textContent = cell.letter;
+                            tile.classList.add(cell.state);
+                            tile.classList.add('grid-path');
                         } else {
-                            tile.classList.add(isSelected ? 'grid-selected' : 'grid-path');
+                            const iIdx = pathEntry.inputIdx;
+                            if (iIdx !== null && iIdx < gridInput.length) {
+                                tile.textContent = gridInput[iIdx];
+                                tile.classList.add(isSelected ? 'grid-selected' : 'grid-path-filled');
+                            } else {
+                                tile.classList.add(isSelected ? 'grid-selected' : 'grid-path');
+                            }
                         }
                         tile.addEventListener('click', () => handleGridCellTap(r, c));
                     } else if (isSelected) {
@@ -960,19 +988,19 @@
             container.innerHTML = '';
 
             DIRECTIONS.forEach(dir => {
-                const path = getGridPath(gridSelected.row, gridSelected.col, dir);
+                const available = isDirectionAvailable(gridSelected.row, gridSelected.col, dir);
                 const btn = document.createElement('button');
                 btn.className = 'dir-btn';
                 btn.textContent = dir.label;
-                btn.disabled = !path;
+                btn.disabled = !available;
                 if (gridDirection && gridDirection.dr === dir.dr && gridDirection.dc === dir.dc) {
                     btn.classList.add('active');
                 }
                 btn.addEventListener('click', () => {
-                    if (!path) return;
+                    if (!available) return;
                     gridDirection = dir;
                     gridInput = '';
-                    document.getElementById('grid-hint').textContent = `Direction ${dir.label} — type your word:`;
+                    document.getElementById('grid-hint').textContent = `Direction ${dir.label} — type word (2-7 letters), Enter to submit:`;
                     renderGridBoard();
                     renderDirectionButtons();
                 });
@@ -989,8 +1017,10 @@
                 gridInput = gridInput.slice(0, -1);
                 renderGridBoard();
             } else if (key === 'ENTER') {
-                if (gridInput.length !== GRID_WORD_LEN) {
-                    showMessage(`Enter ${GRID_WORD_LEN} letters`);
+                // Строим полное слово (ввод + фиксированные буквы)
+                const fullWord = buildFullWord();
+                if (fullWord.length < GRID_MIN_LEN) {
+                    showMessage(`Enter at least ${GRID_MIN_LEN} letters`);
                     return;
                 }
                 submitGridGuess();
@@ -1002,14 +1032,37 @@
             }
         }
 
+        // Строит полное слово из введённых букв + фиксированных на пути
+        function buildFullWord() {
+            const pathLen = Math.max(gridInput.length + 1, GRID_MIN_LEN);
+            const capped = Math.min(pathLen, GRID_WORD_LEN);
+            const path = getGridPath(gridSelected.row, gridSelected.col, gridDirection, capped);
+            if (!path) return gridInput;
+            let word = '';
+            let inputIdx = 0;
+            for (const p of path) {
+                if (p.fixed !== null) {
+                    word += p.fixed;
+                } else {
+                    word += inputIdx < gridInput.length ? gridInput[inputIdx] : '';
+                    inputIdx++;
+                }
+            }
+            return word;
+        }
+
         async function submitGridGuess() {
             try {
+                const fullWord = buildFullWord();
+                const pathLen = fullWord.length;
+                const path = getGridPath(gridSelected.row, gridSelected.col, gridDirection, pathLen);
+
                 const response = await fetch(`${API_URL}/guess`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         user_id: userId,
-                        guess: gridInput,
+                        guess: fullWord,
                         mode: 'grid',
                         start_cell: gridSelected,
                         direction: { dr: gridDirection.dr, dc: gridDirection.dc }
@@ -1024,21 +1077,23 @@
                 }
 
                 const lastAttempt = data.attempts[data.attempts.length - 1];
-                const path = getGridPath(gridSelected.row, gridSelected.col, gridDirection);
                 path.forEach((cell, i) => {
-                    gridCells[cell.row][cell.col] = { letter: gridInput[i], state: lastAttempt.result[i] };
+                    gridCells[cell.row][cell.col] = { letter: fullWord[i], state: lastAttempt.result[i] };
                 });
 
                 gameState.attempts = data.attempts;
                 gameState.letterStates = data.letterStates;
                 gameState.stats = data.stats || gameState.stats;
                 gameState.gameOver = data.gameOver;
+                gameState.guessedPositions = data.guessedPositions || [];
 
                 gridSelected = null;
                 gridDirection = null;
                 gridInput = '';
                 document.getElementById('direction-buttons').style.display = 'none';
-                document.getElementById('grid-hint').textContent = gameState.gameOver ? '' : 'Tap a cell to continue';
+                const attemptsLeft = (data.maxAttempts || 15) - data.attempts.length;
+                document.getElementById('grid-hint').textContent = gameState.gameOver
+                    ? '' : `${gameState.guessedPositions.length}/7 letters found · ${attemptsLeft} attempts left · Tap a cell`;
 
                 renderGridBoard();
                 renderKeyboard();
