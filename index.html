@@ -263,11 +263,44 @@
             padding: 20px;
             font-size: 18px;
         }
+
+        .share-btn {
+            display: none;
+            width: 100%;
+            margin-top: 15px;
+            padding: 14px;
+            background: #6aaa64;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .share-btn:active {
+            background: #5a9a54;
+        }
+
+        .view-banner {
+            display: none;
+            background: #c9b458;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎮 WORDGRID</h1>
+
+        <div class="view-banner" id="view-banner">👀 Viewing someone's game</div>
 
         <div class="stats" id="stats">
             <div class="loading">Loading...</div>
@@ -292,6 +325,8 @@
         </div>
 
         <div class="game-board" id="board"></div>
+
+        <button class="share-btn" id="share-btn" onclick="shareResult()">📤 Share my result</button>
 
         <div class="keyboard" id="keyboard"></div>
     </div>
@@ -342,6 +377,12 @@
 
         // Получение user_id из Telegram
         const userId = tg.initDataUnsafe?.user?.id || 'demo';
+
+        // Режим просмотра чужой игры
+        const urlParams = new URLSearchParams(window.location.search);
+        const viewUserId = urlParams.get('view');
+        const viewMode = urlParams.get('mode') || 'normal';
+        const isViewMode = !!viewUserId;
 
         let keyboardListenerAttached = false;
 
@@ -405,13 +446,10 @@
                 // Проверяем не закончилась ли вчерашняя игра
                 // Если gameOver и attempts есть - показываем результат, но можно начать новую
                 if (data.gameOver && data.attempts && data.attempts.length > 0) {
-                    // Проверяем последнюю попытку - если она сегодня, показываем её
-                    // Иначе очищаем для новой игры
                     const lastAttemptWasWon = data.attempts[data.attempts.length - 1]?.correct;
-
                     if (lastAttemptWasWon || data.attempts.length >= 6) {
-                        // Показываем завершённую игру
                         showMessage('Previous game completed. Start a new one!');
+                        showShareButton();
                     }
                 }
 
@@ -571,11 +609,13 @@
                     setTimeout(() => {
                         showMessage(`🎉 You won in ${data.attempts.length} attempts!`);
                         tg.showAlert(`Congratulations! You won in ${data.attempts.length} attempts!`);
+                        showShareButton();
                     }, 1500);
                 } else if (data.gameOver) {
                     setTimeout(() => {
                         showMessage(`Game over! Word was: ${data.word}`);
                         tg.showAlert(`Game over! The word was: ${data.word}`);
+                        showShareButton();
                     }, 1500);
                 }
 
@@ -694,12 +734,77 @@
             });
         }
 
+        function generateEmojiGrid(attempts) {
+            const map = { correct: '🟩', present: '🟨', absent: '⬛' };
+            return attempts.map(a => a.result.map(r => map[r] || '⬛').join('')).join('\n');
+        }
+
+        function shareResult() {
+            const emoji = generateEmojiGrid(gameState.attempts);
+            const won = gameState.attempts.length > 0 && gameState.attempts[gameState.attempts.length - 1]?.correct;
+            const attemptsText = won ? `${gameState.attempts.length}/6` : 'X/6';
+            const modeLabel = currentMode === 'hard' ? 'Hard Mode' : 'Normal';
+            const shareUrl = `https://wordle-frontend-gray.vercel.app?view=${userId}&mode=${currentMode}`;
+            const text = `WORDGRID ${modeLabel} ${attemptsText}\n\n${emoji}\n\n${shareUrl}`;
+            tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`WORDGRID ${modeLabel} ${attemptsText}\n\n${emoji}`)}`);
+        }
+
+        function showShareButton() {
+            const btn = document.getElementById('share-btn');
+            if (btn) btn.style.display = 'block';
+        }
+
+        async function loadViewMode() {
+            document.getElementById('view-banner').style.display = 'block';
+            document.getElementById('mode-selector').style.display = 'none';
+            document.getElementById('mode-info').style.display = 'none';
+
+            try {
+                const res = await fetch(`${API_URL}/history/${viewUserId}?mode=${viewMode}`);
+                const data = await res.json();
+
+                currentMode = viewMode;
+                modeSelected = true;
+                gameState = {
+                    attempts: data.attempts || [],
+                    currentGuess: '',
+                    letterStates: data.letterStates || {},
+                    lastAnimatedAttemptIndex: null,
+                    stats: { played: 0, won: 0, streak: 0 },
+                    gameOver: data.gameOver || false,
+                    mode: viewMode,
+                    wordLength: data.wordLength || 5
+                };
+
+                renderBoard();
+                renderKeyboard();
+
+                const won = data.attempts?.length > 0 && data.attempts[data.attempts.length - 1]?.correct;
+                if (data.gameOver) {
+                    const attemptsText = won ? `${data.attempts.length}/6` : 'X/6';
+                    showMessage(won ? `Won in ${attemptsText}!` : `Game over! Word: ${data.word}`);
+                }
+
+                const stats = document.getElementById('stats');
+                stats.innerHTML = `<div style="font-size:13px;color:var(--tg-theme-hint-color,#5f6368)">
+                    ${data.attempts?.length || 0} attempt(s) · ${currentMode === 'hard' ? 'Hard Mode' : 'Normal'}
+                    ${data.gameOver ? (won ? ' · 🏆 Won' : ' · ❌ Lost') : ' · In progress'}
+                </div>`;
+            } catch (e) {
+                showMessage('Failed to load game');
+            }
+        }
+
         // Запуск игры
         updateModeUI();
         renderBoard();
         renderKeyboard();
         updateStats();
         initModeSelector();
+
+        if (isViewMode) {
+            loadViewMode();
+        }
     </script>
 </body>
 </html>
