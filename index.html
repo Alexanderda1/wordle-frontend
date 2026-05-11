@@ -797,6 +797,10 @@
                 mode: currentMode,
                 wordLength: MODES[currentMode]?.wordLength || 5
             };
+            if (currentMode === 'grid') initGridCells();
+            document.getElementById('share-btn').style.display = 'none';
+            document.getElementById('direction-buttons').style.display = 'none';
+            document.getElementById('grid-hint').textContent = currentMode === 'grid' ? 'Tap a cell to start' : '';
             renderBoard();
             renderKeyboard();
             updateStats();
@@ -845,7 +849,7 @@
             { dr: -1, dc: -1, label: '↖' },
         ];
 
-        let gridCells = [];    // [row][col] = null | { letter, state }
+        let gridCells = Array.from({ length: 6 }, () => Array(5).fill(null));
         let gridSelected = null;   // { row, col }
         let gridDirection = null;  // элемент из DIRECTIONS
         let gridInput = '';
